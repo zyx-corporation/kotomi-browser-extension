@@ -1,0 +1,19 @@
+{
+  "name": "kotomi-real-transcriber",
+  "version": "0.1.0-alpha.4",
+  "private": true,
+  "description": "Real ASR transcriber server for Kotomi Browser Extension — pluggable backend (mock | faster-whisper)",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  },
+  "scripts": {
+    "start": "TRANSCRIBER_BACKEND=${TRANSCRIBER_BACKEND:-mock} npx tsx src/server.ts",
+    "start:mock": "TRANSCRIBER_BACKEND=mock npx tsx src/server.ts",
+    "start:faster-whisper": "TRANSCRIBER_BACKEND=faster-whisper npx tsx src/server.ts"
+  }
+}

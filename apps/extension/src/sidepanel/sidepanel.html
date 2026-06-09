@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Kotomi Side Panel</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 12px; font-size: 13px; }
+    h1 { font-size: 16px; margin: 0 0 8px 0; }
+    #transcript-list { max-height: calc(100vh - 240px); overflow-y: auto; margin-bottom: 12px; }
+    .transcript-segment { padding: 4px 0; border-bottom: 1px solid #eee; }
+    .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+    .toolbar button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .toolbar button:disabled { opacity: 0.4; cursor: default; }
+    #save-state { font-size: 11px; color: #4caf50; margin-top: 2px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <h1>Transcript</h1>
+    <div id="transcript-list"></div>
+    <div class="toolbar">
+      <button id="export-md" disabled>Export Markdown</button>
+      <button id="export-json" disabled>Export JSON</button>
+      <button id="clear-transcript" disabled>Clear</button>
+    </div>
+    <div id="save-state"></div>
+  </div>
+  <script type="module" src="./sidepanel.tsx"></script>
+</body>
+</html>
