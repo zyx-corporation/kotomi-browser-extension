@@ -1,10 +1,18 @@
 import type {
+  StartCaptureMessage,
+  StopCaptureMessage,
+  CaptureStateMessage,
+  AudioChunkMetadataMessage,
   TranscriptSessionStart,
   AudioChunkMessage,
   TranscriptSegment,
 } from "./types";
 
 export type ExtensionMessage =
+  | StartCaptureMessage
+  | StopCaptureMessage
+  | CaptureStateMessage
+  | AudioChunkMetadataMessage
   | TranscriptSessionStart
   | AudioChunkMessage
   | TranscriptSegment
@@ -13,6 +21,39 @@ export type ExtensionMessage =
 export interface SessionEndMessage {
   type: "session.end";
   sessionId: string;
+}
+
+// --- Factory functions ---
+
+export function createStartCapture(): StartCaptureMessage {
+  return { type: "capture.start" };
+}
+
+export function createStopCapture(): StopCaptureMessage {
+  return { type: "capture.stop" };
+}
+
+export function createCaptureState(
+  status: CaptureStateMessage["status"],
+  sessionId?: string,
+  error?: string,
+): CaptureStateMessage {
+  return { type: "capture.state", status, sessionId, error };
+}
+
+export function createAudioChunkMetadata(
+  sessionId: string,
+  chunkIndex: number,
+  sizeBytes: number,
+  timestampMs: number,
+): AudioChunkMetadataMessage {
+  return {
+    type: "audio.chunk.metadata",
+    sessionId,
+    chunkIndex,
+    sizeBytes,
+    timestampMs,
+  };
 }
 
 export function createSessionStart(
