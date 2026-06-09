@@ -75,3 +75,26 @@ See [docs/known-limitations-v0.1.0.md](./known-limitations-v0.1.0.md) for full d
 - [x] Local persistence
 - [x] User-initated capture only
 - [x] No cloud transmission
+
+## Final RC Result (2026-06-10)
+
+| Category | Result |
+|---|---|
+| RC Smoke | **PASS** |
+| Automated Tests | **47/47 passed** (typecheck + 4 suites) |
+| MVP Criteria | **7/7 passed** |
+| Failure Path | **8/8 passed** |
+| Real ASR E2E | **BLOCKED** (Python/faster-whisper environment not set up) |
+| Documentation Wording | **PASS** (no production-ready / accurate claims) |
+
+See [docs/smoke-v0.1.0.md](./smoke-v0.1.0.md) for detailed RC smoke results.
+
+## v0.1.1 Planned Focus
+
+See [docs/post-v0.1.0-plan.md](./post-v0.1.0-plan.md) for the full plan.
+
+Priority items for v0.1.1:
+- Real ASR E2E verification (unblock faster-whisper)
+- Session History / Session List
+- Long-running stability smoke
+- Basic transcript search
