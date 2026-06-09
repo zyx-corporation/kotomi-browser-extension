@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Kotomi Browser Extension",
+  "version": "0.1.0",
+  "description": "Capture tab audio and transcribe it with Kotomi.",
+  "permissions": [
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "sidePanel",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Kotomi Transcript"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  },
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "kotomi-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension for capturing browser tab audio and transcribing it through Kotomi.",
+  "scripts": {
+    "dev": "pnpm --filter @kotomi/extension dev",
+    "build": "pnpm --filter @kotomi/extension build",
+    "typecheck": "pnpm --filter @kotomi/extension typecheck"
+  }
+}
