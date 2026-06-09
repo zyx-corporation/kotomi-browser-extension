@@ -3,9 +3,11 @@ import type {
   StopCaptureMessage,
   CaptureStateMessage,
   AudioChunkMetadataMessage,
+  TranscriptSegmentRelayMessage,
+  TranscriberStateMessage,
   TranscriptSessionStart,
   AudioChunkMessage,
-  TranscriptSegment,
+  TranscriptSegmentMessage,
 } from "./types";
 
 export type ExtensionMessage =
@@ -13,9 +15,10 @@ export type ExtensionMessage =
   | StopCaptureMessage
   | CaptureStateMessage
   | AudioChunkMetadataMessage
+  | TranscriptSegmentRelayMessage
+  | TranscriberStateMessage
   | TranscriptSessionStart
   | AudioChunkMessage
-  | TranscriptSegment
   | SessionEndMessage;
 
 export interface SessionEndMessage {
@@ -54,6 +57,20 @@ export function createAudioChunkMetadata(
     sizeBytes,
     timestampMs,
   };
+}
+
+export function createTranscriptSegmentRelay(
+  segment: TranscriptSegmentMessage,
+): TranscriptSegmentRelayMessage {
+  return { type: "transcript.segment.relay", segment };
+}
+
+export function createTranscriberState(
+  status: TranscriberStateMessage["status"],
+  sessionId?: string,
+  message?: string,
+): TranscriberStateMessage {
+  return { type: "transcriber.state", status, sessionId, message };
 }
 
 export function createSessionStart(

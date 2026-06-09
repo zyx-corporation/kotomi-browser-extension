@@ -1,0 +1,17 @@
+{
+  "name": "kotomi-mock-transcriber",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mock WebSocket transcriber server for Kotomi Browser Extension development",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  },
+  "scripts": {
+    "start": "npx tsx src/server.ts"
+  }
+}

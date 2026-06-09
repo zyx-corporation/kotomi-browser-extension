@@ -1,18 +1,63 @@
-// Offscreen document — hosts MediaRecorder for tab audio capture.
+// Offscreen document — hosts MediaRecorder and TranscriberClient for tab audio capture.
 // - Receives "offscreen.start" with streamId from service worker
 // - Obtains MediaStream via getUserMedia with chromeMediaSource constraints
 // - Creates MediaRecorder with `audio/webm;codecs=opus`
-// - Emits audio.chunk.metadata to service worker on each dataavailable event
-// - Stops on "offscreen.stop"
+// - Creates TranscriberClient and connects to local Kotomi transcriber
+// - Sends JSON metadata + binary audio chunks over WebSocket
+// - Relays transcript.segment and transcriber.state to service worker
+// - Stops cleanly on "offscreen.stop"
+
+import { TranscriberClient, type TranscriberState } from "../../../../packages/kotomi-client/src/transcriber-client";
+import type {
+  TranscriptionSessionStartMessage,
+  TranscriptionAudioChunkMessage,
+  TranscriptionSessionStopMessage,
+  TranscriptSegmentMessage,
+  TranscriberErrorMessage,
+} from "../shared/types";
 
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
+let transcriber: TranscriberClient | null = null;
 let sessionId: string | null = null;
 let chunkIndex = 0;
+let captureStartTime = 0;
+
+// --- Transcriber callbacks ---
+
+function onTranscriberState(state: TranscriberState, message?: string): void {
+  console.log(`[offscreen] transcriber state: ${state}${message ? ` (${message})` : ""}`);
+  chrome.runtime.sendMessage({
+    type: "transcriber.state",
+    status: state,
+    sessionId,
+    message,
+  }).catch(() => {});
+}
+
+function onTranscriptSegment(segment: TranscriptSegmentMessage): void {
+  console.log(`[offscreen] transcript: "${segment.text}"`);
+  chrome.runtime.sendMessage({
+    type: "transcript.segment.relay",
+    segment,
+  }).catch(() => {});
+}
+
+function onTranscriberError(error: TranscriberErrorMessage): void {
+  console.error("[offscreen] transcriber error:", error.message);
+  chrome.runtime.sendMessage({
+    type: "transcriber.error",
+    sessionId,
+    message: error.message,
+    detail: error.detail,
+  }).catch(() => {});
+}
+
+// --- Capture ---
 
 async function startCapture(streamId: string): Promise<void> {
   try {
-    // Obtain the actual MediaStream from the stream ID
+    // 1. Obtain MediaStream
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         // @ts-expect-error chromeMediaSource is a Chrome-specific constraint
@@ -24,55 +69,86 @@ async function startCapture(streamId: string): Promise<void> {
       video: false,
     });
 
-    // Verify we have audio tracks
     const audioTracks = mediaStream.getAudioTracks();
     if (audioTracks.length === 0) {
       throw new Error("no audio tracks available on captured stream");
     }
     console.log("[offscreen] audio track obtained:", audioTracks[0].label);
 
-    // Create MediaRecorder
+    // 2. Connect to transcriber
+    transcriber = new TranscriberClient({
+      onSegment: onTranscriptSegment,
+      onStateChange: onTranscriberState,
+      onError: onTranscriberError,
+    });
+
+    await transcriber.connect();
+
+    // 3. Send session.start
+    const startMsg: TranscriptionSessionStartMessage = {
+      type: "transcription.session.start",
+      sessionId: sessionId!,
+      source: {
+        type: "tab_audio",
+      },
+      audio: {
+        mimeType: "audio/webm;codecs=opus",
+        timesliceMs: 1000,
+      },
+      options: {
+        language: "auto",
+        interim: true,
+      },
+    };
+    transcriber.sendSessionStart(startMsg);
+
+    // 4. Start MediaRecorder
+    captureStartTime = Date.now();
     mediaRecorder = new MediaRecorder(mediaStream, {
       mimeType: "audio/webm;codecs=opus",
       audioBitsPerSecond: 64000,
     });
 
-    mediaRecorder.ondataavailable = (event: BlobEvent) => {
+    mediaRecorder.ondataavailable = async (event: BlobEvent) => {
       if (event.data.size === 0) return;
 
       const timestampMs = Date.now();
       const sizeBytes = event.data.size;
 
-      // Emit chunk metadata to service worker
+      // Send chunk metadata to service worker (for side panel display)
       chrome.runtime.sendMessage({
         type: "audio.chunk.metadata",
         sessionId,
         chunkIndex,
         sizeBytes,
         timestampMs,
-      }).catch((err) => {
-        console.warn("[offscreen] failed to send chunk metadata:", err);
-      });
+      }).catch(() => {});
 
-      console.log(
-        `[offscreen] chunk #${chunkIndex} | ${sizeBytes} bytes`,
-      );
+      // Send to transcriber: JSON metadata + binary audio
+      if (transcriber) {
+        try {
+          const binary = await event.data.arrayBuffer();
+          const meta: TranscriptionAudioChunkMessage = {
+            type: "transcription.audio.chunk",
+            sessionId: sessionId!,
+            chunkIndex,
+            timestampMs,
+            mimeType: "audio/webm;codecs=opus",
+          };
+          transcriber.sendAudioChunk(meta, binary);
+        } catch (err) {
+          console.warn("[offscreen] failed to send audio chunk to transcriber:", err);
+        }
+      }
 
+      console.log(`[offscreen] chunk #${chunkIndex} | ${sizeBytes} bytes`);
       chunkIndex++;
     };
 
     mediaRecorder.onerror = (event: Event) => {
       console.error("[offscreen] MediaRecorder error:", event);
-      chrome.runtime.sendMessage({
-        type: "audio.chunk.metadata",
-        sessionId,
-        chunkIndex,
-        sizeBytes: 0,
-        timestampMs: Date.now(),
-      });
     };
 
-    // Start recording with 1-second chunks
     mediaRecorder.start(1000);
     console.log("[offscreen] MediaRecorder started, chunk interval: 1000ms");
   } catch (err) {
@@ -85,12 +161,33 @@ async function startCapture(streamId: string): Promise<void> {
   }
 }
 
+// --- Teardown ---
+
 function stopCapture(): void {
+  // 1. Stop MediaRecorder
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
     console.log("[offscreen] MediaRecorder stopped");
   }
 
+  // 2. Send session.stop to transcriber
+  if (transcriber && sessionId) {
+    const stopMsg: TranscriptionSessionStopMessage = {
+      type: "transcription.session.stop",
+      sessionId,
+      reason: "user_stop",
+    };
+    transcriber.sendSessionStop(stopMsg);
+  }
+
+  // 3. Disconnect transcriber
+  if (transcriber) {
+    transcriber.disconnect();
+    transcriber = null;
+    console.log("[offscreen] transcriber disconnected");
+  }
+
+  // 4. Stop all media tracks
   if (mediaStream) {
     mediaStream.getTracks().forEach((track) => track.stop());
     mediaStream = null;

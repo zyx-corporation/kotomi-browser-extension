@@ -1,14 +1,20 @@
 // Background service worker — orchestrates audio capture lifecycle.
 // - Receives capture.start / capture.stop from popup
 // - Creates and manages offscreen document for tabCapture
-// - Routes audio chunk metadata to side panel
-// - Broadcasts capture state to popup and side panel
+// - Routes audio chunk metadata and transcript segments to side panel
+// - Broadcasts capture and transcriber state to popup and side panel
 
-import type { CaptureStateMessage, AudioChunkMetadataMessage } from "../shared/types";
+import type {
+  CaptureStateMessage,
+  AudioChunkMetadataMessage,
+  TranscriptSegmentRelayMessage,
+  TranscriberStateMessage,
+} from "../shared/types";
 
 const OFFSCREEN_DOCUMENT_PATH = "src/offscreen/offscreen.html";
 let currentSessionId: string | null = null;
 let offscreenCreating: Promise<void> | null = null;
+let transcriberStatus: TranscriberStateMessage["status"] = "disconnected";
 
 // --- Offscreen document management ---
 
@@ -65,7 +71,6 @@ async function startCapture(): Promise<void> {
   }
 
   try {
-    // Get active tab metadata
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) throw new Error("no active tab found");
 
@@ -76,10 +81,8 @@ async function startCapture(): Promise<void> {
 
     console.log("[service-worker] streamId obtained, tab:", tab.id);
 
-    // Create offscreen document if needed
     await createOffscreenDocument();
 
-    // Send start command to offscreen with stream ID
     chrome.runtime.sendMessage({
       type: "offscreen.start",
       sessionId,
@@ -87,8 +90,8 @@ async function startCapture(): Promise<void> {
     });
 
     currentSessionId = sessionId;
+    transcriberStatus = "connecting";
 
-    // Broadcast capturing state
     broadcastState("capturing", sessionId);
   } catch (err) {
     console.error("[service-worker] failed to start capture:", err);
@@ -103,14 +106,13 @@ async function stopCapture(): Promise<void> {
   }
 
   try {
-    // Tell offscreen to stop
     chrome.runtime.sendMessage({ type: "offscreen.stop" });
   } catch (err) {
     console.warn("[service-worker] error sending stop to offscreen:", err);
   }
 
-  // Clean up
   currentSessionId = null;
+  transcriberStatus = "disconnected";
   await closeOffscreenDocument();
   broadcastState("idle");
 }
@@ -127,7 +129,6 @@ function broadcastState(
     error,
   };
 
-  // Send to popup (if open) and side panel
   chrome.runtime.sendMessage(message).catch(() => {
     // Popup may be closed — that's expected
   });
@@ -148,13 +149,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  // Forward audio chunk metadata from offscreen to side panel
+  // Audio chunk metadata from offscreen → logged here, side panel listens directly
   if (message.type === "audio.chunk.metadata") {
     const meta = message as AudioChunkMetadataMessage;
     console.log(
       `[service-worker] chunk #${meta.chunkIndex} | ${meta.sizeBytes} bytes | ${meta.timestampMs}ms`,
     );
-    // Already broadcast via runtime.onMessage — side panel can listen directly
+    return false;
+  }
+
+  // Transcript segment relay from offscreen → logged here, side panel listens directly
+  if (message.type === "transcript.segment.relay") {
+    const relay = message as TranscriptSegmentRelayMessage;
+    console.log(
+      `[service-worker] transcript segment: "${relay.segment.text}"`,
+    );
+    return false;
+  }
+
+  // Transcriber state update from offscreen
+  if (message.type === "transcriber.state") {
+    const state = message as TranscriberStateMessage;
+    transcriberStatus = state.status;
+    console.log(`[service-worker] transcriber state: ${state.status}`);
     return false;
   }
 
