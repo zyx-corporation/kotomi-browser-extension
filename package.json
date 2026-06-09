@@ -5,6 +5,8 @@
   "description": "Chrome extension for capturing browser tab audio and transcribing it through Kotomi.",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test:export-serializers && npm run test:storage-persistence",
+    "test:all": "npm run check && npm run test:mock-transcriber",
     "test:mock-transcriber": "npx tsx tools/mock-transcriber/tests/transcriber-smoke.test.ts",
     "test:real-transcriber": "npx tsx tools/real-transcriber/tests/real-transcriber-smoke.test.ts",
     "test:export-serializers": "npx tsx packages/transcript-core/tests/export-serializers.test.ts",
