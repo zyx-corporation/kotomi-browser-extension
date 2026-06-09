@@ -32,6 +32,7 @@ export class TranscriberClient {
   private callbacks: TranscriberCallbacks;
   private reconnectAttempts = 0;
   private shouldReconnect = true;
+  private reconnectTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     callbacks: TranscriberCallbacks,
@@ -46,6 +47,7 @@ export class TranscriberClient {
   connect(): Promise<void> {
     this.shouldReconnect = true;
     this.reconnectAttempts = 0;
+    this.clearReconnectTimer();
     return this.doConnect();
   }
 
@@ -77,7 +79,7 @@ export class TranscriberClient {
           console.log(
             `[transcriber-client] reconnecting (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})…`,
           );
-          setTimeout(() => this.doConnect().catch(() => {}), RECONNECT_DELAY_MS);
+          this.reconnectTimerId = setTimeout(() => this.doConnect().catch(() => {}), RECONNECT_DELAY_MS);
         }
       };
 
@@ -123,6 +125,7 @@ export class TranscriberClient {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    this.clearReconnectTimer();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.close(1000, "client disconnect");
     }
@@ -130,6 +133,13 @@ export class TranscriberClient {
   }
 
   // --- Internals ---
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimerId !== null) {
+      clearTimeout(this.reconnectTimerId);
+      this.reconnectTimerId = null;
+    }
+  }
 
   private sendJSON(data: unknown): void {
     if (this.ws?.readyState === WebSocket.OPEN) {

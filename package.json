@@ -4,8 +4,12 @@
   "private": true,
   "description": "Chrome extension for capturing browser tab audio and transcribing it through Kotomi.",
   "scripts": {
-    "dev": "pnpm --filter @kotomi/extension dev",
-    "build": "pnpm --filter @kotomi/extension build",
-    "typecheck": "pnpm --filter @kotomi/extension typecheck"
+    "typecheck": "tsc --noEmit",
+    "test:mock-transcriber": "npx tsx tools/mock-transcriber/tests/transcriber-smoke.test.ts",
+    "mock-transcriber": "npm --prefix tools/mock-transcriber start"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.43",
+    "typescript": "^6.0.3"
   }
 }
