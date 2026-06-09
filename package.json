@@ -6,7 +6,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:mock-transcriber": "npx tsx tools/mock-transcriber/tests/transcriber-smoke.test.ts",
-    "mock-transcriber": "npm --prefix tools/mock-transcriber start"
+    "test:real-transcriber": "npx tsx tools/real-transcriber/tests/real-transcriber-smoke.test.ts",
+    "mock-transcriber": "npm --prefix tools/mock-transcriber start",
+    "real-transcriber": "npm --prefix tools/real-transcriber run start:mock",
+    "real-transcriber:faster-whisper": "npm --prefix tools/real-transcriber run start:faster-whisper"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.43",

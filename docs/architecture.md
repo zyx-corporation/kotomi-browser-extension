@@ -50,7 +50,20 @@ A WebSocket client in `packages/kotomi-client` that:
 - Supports reconnection (up to 3 attempts)
 
 ### Kotomi Transcriber
-A local transcription service running on `localhost:8765`. For development, a mock transcriber is provided in `tools/mock-transcriber/` that returns mock transcript segments.
+A local transcription service running on `localhost:8765`.
+
+Two implementations exist, sharing the same WebSocket protocol:
+
+| Transcriber | Path | Backend |
+|---|---|---|
+| `mock-transcriber` | `tools/mock-transcriber/` | Hardcoded mock text (no dependencies) |
+| `real-transcriber` | `tools/real-transcriber/` | Pluggable: `mock` or `faster-whisper` via `TRANSCRIBER_BACKEND` env var |
+
+The `real-transcriber` uses an **ASR adapter pattern**:
+- `MockAdapter` — returns mock text, zero dependencies
+- `FasterWhisperAdapter` — converts audio via ffmpeg, delegates to a Python faster-whisper HTTP service
+
+Both transcriber servers are drop-in replacements — the browser extension sees no difference. Switching between them requires no extension-side configuration change.
 
 ### Side Panel
 Displays:
