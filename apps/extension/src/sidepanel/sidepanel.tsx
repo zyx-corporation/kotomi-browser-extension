@@ -1,22 +1,23 @@
 // Side Panel — displays live transcript, capture status, and transcriber connection.
 // Listens for: capture.state, audio.chunk.metadata, transcriber.state, transcript.segment.relay
-// Provides: Markdown export, JSON export, Clear transcript
+// Provides: Markdown export, JSON export, Clear transcript, local storage persistence
 
 import type {
   AudioChunkMetadataMessage,
   CaptureStateMessage,
   TranscriberStateMessage,
   TranscriptSegmentRelayMessage,
-  TranscriptSegmentMessage,
 } from "../shared/types";
 import type { StoredSegment } from "../../../../packages/transcript-core/src/transcript";
 import { exportMarkdown } from "../../../../packages/transcript-core/src/export-markdown";
 import { exportJSON } from "../../../../packages/transcript-core/src/export-json";
 import {
-  createTranscriptSession,
-  upsertSegment,
-  type TranscriptSession,
-} from "../../../../packages/transcript-core/src/transcript";
+  serializeSession,
+  deserializeSession,
+  isValidPersistedSession,
+  STORAGE_KEY,
+  type PersistedSession,
+} from "../../../../packages/transcript-core/src/storage";
 
 // --- DOM Elements ---
 
@@ -24,6 +25,7 @@ const transcriptList = document.getElementById("transcript-list") as HTMLDivElem
 const exportMdBtn = document.getElementById("export-md") as HTMLButtonElement;
 const exportJSONBtn = document.getElementById("export-json") as HTMLButtonElement;
 const clearBtn = document.getElementById("clear-transcript") as HTMLButtonElement;
+const saveStateEl = document.getElementById("save-state") as HTMLDivElement;
 
 // --- Status / Count Elements ---
 
@@ -42,37 +44,139 @@ statusEl.after(chunkCountEl);
 
 let chunkCount = 0;
 let sessionId: string | null = null;
+let sessionCreatedAt: number = 0;
 let transcriberState: string | null = null;
 let segments: StoredSegment[] = [];
 let captureStartTime = 0;
+let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let savePending = false;
+const SAVE_DEBOUNCE_MS = 1000;
+
+// --- Save state indicator ---
+
+function setSaveState(text: string, color: string = "#4caf50"): void {
+  saveStateEl.textContent = text;
+  saveStateEl.style.color = color;
+}
+
+// --- Storage ---
+
+async function loadFromStorage(): Promise<boolean> {
+  try {
+    const result = await chrome.storage.local.get(STORAGE_KEY);
+    const data = result[STORAGE_KEY];
+
+    if (!data || !isValidPersistedSession(data)) {
+      if (data) {
+        console.warn("[sidepanel] stored data invalid, clearing");
+        await chrome.storage.local.remove(STORAGE_KEY);
+      }
+      return false;
+    }
+
+    const persisted = data as PersistedSession;
+    sessionId = persisted.sessionId;
+    sessionCreatedAt = persisted.createdAt;
+    captureStartTime = persisted.metadata.startedAt;
+    transcriberState = persisted.metadata.transcriberState ?? null;
+    segments = persisted.segments;
+
+    // Rebuild DOM
+    transcriptList.innerHTML = "";
+    for (const seg of persisted.segments) {
+      const row = createSegmentRow(seg);
+      transcriptList.appendChild(row);
+    }
+
+    updateExportButtons();
+    setSaveState(
+      `Restored from local storage — ${persisted.segments.length} segments (${new Date(persisted.updatedAt).toLocaleTimeString()})`,
+      "#4caf50",
+    );
+    console.log(`[sidepanel] restored session ${sessionId} with ${segments.length} segments`);
+    return true;
+  } catch (err) {
+    console.error("[sidepanel] failed to load from storage:", err);
+    setSaveState("Storage read failed", "#f44336");
+    return false;
+  }
+}
+
+async function saveToStorage(): Promise<void> {
+  if (!sessionId || segments.length === 0) return;
+
+  try {
+    const session = buildSessionObject();
+    if (!session) return;
+
+    const persisted = serializeSession(session, sessionCreatedAt || undefined);
+    await chrome.storage.local.set({ [STORAGE_KEY]: persisted });
+
+    setSaveState(`Saved locally ${new Date().toLocaleTimeString().slice(0, 5)}`, "#4caf50");
+    console.log(`[sidepanel] saved ${segments.length} segments to storage`);
+  } catch (err) {
+    console.error("[sidepanel] failed to save to storage:", err);
+    setSaveState("Save failed", "#f44336");
+  }
+}
+
+function debouncedSave(): void {
+  if (!sessionId) return;
+
+  setSaveState("Unsaved changes…", "#ff9800");
+  savePending = true;
+
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(async () => {
+    savePending = false;
+    await saveToStorage();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+async function clearStorage(): Promise<void> {
+  try {
+    await chrome.storage.local.remove(STORAGE_KEY);
+    console.log("[sidepanel] storage cleared");
+  } catch (err) {
+    console.error("[sidepanel] failed to clear storage:", err);
+  }
+}
+
+// --- Build session object ---
+
+function buildSessionObject(): StoredSession | null {
+  if (!sessionId || segments.length === 0) return null;
+
+  return {
+    sessionId,
+    segments,
+    metadata: {
+      source: "Kotomi Browser Extension v0.1.0",
+      captureMode: "tab_audio" as const,
+      startedAt: captureStartTime || Date.now(),
+      endedAt: Date.now(),
+      transcriberState: transcriberState ?? undefined,
+    },
+  };
+}
+
+interface StoredSession {
+  sessionId: string;
+  segments: StoredSegment[];
+  metadata: {
+    source: string;
+    captureMode: "tab_audio" | "microphone";
+    startedAt: number;
+    endedAt?: number;
+    transcriberState?: string;
+  };
+}
 
 function updateExportButtons(): void {
   const hasSegments = segments.length > 0;
   exportMdBtn.disabled = !hasSegments;
   exportJSONBtn.disabled = !hasSegments;
   clearBtn.disabled = !hasSegments;
-}
-
-function buildSession(): TranscriptSession | null {
-  if (!sessionId || segments.length === 0) return null;
-
-  return createTranscriptSession(sessionId, {
-    startedAt: captureStartTime || Date.now(),
-    endedAt: Date.now(),
-    transcriberState: transcriberState ?? undefined,
-  }).segments.length > 0
-    ? {
-        sessionId,
-        segments,
-        metadata: {
-          source: "Kotomi Browser Extension v0.1.0",
-          captureMode: "tab_audio" as const,
-          startedAt: captureStartTime || Date.now(),
-          endedAt: Date.now(),
-          transcriberState: transcriberState ?? undefined,
-        },
-      }
-    : null;
 }
 
 // --- Export ---
@@ -98,7 +202,7 @@ function generateFilename(ext: string): string {
 }
 
 exportMdBtn.addEventListener("click", () => {
-  const session = buildSession();
+  const session = buildSessionObject();
   if (!session) return;
 
   const md = exportMarkdown(session);
@@ -107,7 +211,7 @@ exportMdBtn.addEventListener("click", () => {
 });
 
 exportJSONBtn.addEventListener("click", () => {
-  const session = buildSession();
+  const session = buildSessionObject();
   if (!session) return;
 
   const json = exportJSON(session);
@@ -119,13 +223,18 @@ exportJSONBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
   if (segments.length === 0) return;
-  if (!confirm(`Clear ${segments.length} transcript segments? This cannot be undone.`)) return;
+  if (!confirm(`Clear ${segments.length} transcript segments and remove from local storage? This cannot be undone.`)) return;
+
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
 
   segments = [];
   sessionId = null;
+  sessionCreatedAt = 0;
   captureStartTime = 0;
   transcriptList.innerHTML = "";
   updateExportButtons();
+  clearStorage();
+  setSaveState("", "#888");
   console.log("[sidepanel] transcript cleared");
 });
 
@@ -145,20 +254,32 @@ chrome.runtime.onMessage.addListener((message) => {
       state.status === "error" ? "#f44336" :
       "#888";
 
+    // New capture starting — flush existing session if needed
     if (state.status === "capturing" && state.sessionId) {
+      if (sessionId && sessionId !== state.sessionId && segments.length > 0) {
+        if (savePending && saveDebounceTimer) {
+          clearTimeout(saveDebounceTimer);
+          saveToStorage();
+        }
+      }
       sessionId = state.sessionId;
       if (captureStartTime === 0) captureStartTime = Date.now();
+      if (sessionCreatedAt === 0) sessionCreatedAt = Date.now();
+      chunkCount = 0;
+      chunkCountEl.textContent = "Chunks: 0";
     }
 
+    // Capture stopped — flush pending save
     if (state.status === "idle") {
       chunkCount = 0;
       chunkCountEl.textContent = "Chunks: 0";
+      if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+      if (savePending) saveToStorage();
     }
   }
 
   // Chunk metadata
   if (message.type === "audio.chunk.metadata") {
-    const meta = message as AudioChunkMetadataMessage;
     chunkCount++;
     chunkCountEl.textContent = `Chunks: ${chunkCount}`;
   }
@@ -182,7 +303,6 @@ chrome.runtime.onMessage.addListener((message) => {
     const relay = message as TranscriptSegmentRelayMessage;
     const seg = relay.segment;
 
-    // Store segment with receivedAt timestamp
     const existingIdx = segments.findIndex((s) => s.segmentId === seg.segmentId);
     const stored: StoredSegment = {
       ...seg,
@@ -191,7 +311,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
     if (existingIdx >= 0) {
       segments[existingIdx] = stored;
-      // Update DOM row
       const existingRow = transcriptList.querySelector(`[data-seg-id="${seg.segmentId}"]`);
       if (existingRow) {
         updateSegmentRow(existingRow as HTMLDivElement, stored);
@@ -204,6 +323,7 @@ chrome.runtime.onMessage.addListener((message) => {
     }
 
     updateExportButtons();
+    debouncedSave();
   }
 });
 
@@ -239,5 +359,9 @@ function formatMs(ms: number): string {
   const remaining = sec % 60;
   return `${String(min).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
 }
+
+// --- Startup: restore from storage ---
+
+loadFromStorage();
 
 console.log("[sidepanel] Kotomi side panel ready");

@@ -8,6 +8,7 @@
     "test:mock-transcriber": "npx tsx tools/mock-transcriber/tests/transcriber-smoke.test.ts",
     "test:real-transcriber": "npx tsx tools/real-transcriber/tests/real-transcriber-smoke.test.ts",
     "test:export-serializers": "npx tsx packages/transcript-core/tests/export-serializers.test.ts",
+    "test:storage-persistence": "npx tsx packages/transcript-core/tests/storage-persistence.test.ts",
     "mock-transcriber": "npm --prefix tools/mock-transcriber start",
     "real-transcriber": "npm --prefix tools/real-transcriber run start:mock",
     "real-transcriber:faster-whisper": "npm --prefix tools/real-transcriber run start:faster-whisper"
