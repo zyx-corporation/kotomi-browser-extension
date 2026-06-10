@@ -41,6 +41,12 @@ function onTranscriptSegment(segment: TranscriptSegmentMessage): void {
     type: "transcript.segment.relay",
     segment,
   }).catch(() => {});
+
+  // Signal that we received the final transcript (used by stopCapture wait)
+  if (stopResolveWait) {
+    stopResolveWait();
+    stopResolveWait = null;
+  }
 }
 
 function onTranscriberError(error: TranscriberErrorMessage): void {
@@ -163,7 +169,9 @@ async function startCapture(streamId: string): Promise<void> {
 
 // --- Teardown ---
 
-function stopCapture(): void {
+let stopResolveWait: (() => void) | null = null;
+
+async function stopCapture(): Promise<void> {
   // 1. Stop MediaRecorder
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
@@ -178,6 +186,21 @@ function stopCapture(): void {
       reason: "user_stop",
     };
     transcriber.sendSessionStop(stopMsg);
+
+    // Wait for the final transcript segment before disconnecting.
+    // The server needs time to process all accumulated audio chunks
+    // and send back the transcription result.
+    await new Promise<void>((resolve) => {
+      stopResolveWait = resolve;
+      // Safety timeout: disconnect after 20s even if no segment received
+      setTimeout(() => {
+        if (stopResolveWait) {
+          console.warn("[offscreen] timeout waiting for final transcript");
+          stopResolveWait();
+          stopResolveWait = null;
+        }
+      }, 20000);
+    });
   }
 
   // 3. Disconnect transcriber
