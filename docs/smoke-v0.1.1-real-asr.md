@@ -163,3 +163,36 @@ Browser Extension (WebSocket)
 2. **テスト用音声ファイルの自動生成**: `say` コマンドが macOS 依存のため、クロスプラットフォーム対応が必要
 3. **Real ASR E2E テストの CI 統合**: 現在は手動実行のみ。CI では Python 環境の構築がボトルネック
 4. **Real ASR E2E smoke test (実音声)**: 現在の smoke test は偽データで、ffmpeg エラーを期待する設計。実音声を使うテストに置き換え可能
+
+## Extension Real ASR Smoke (2026-06-11)
+
+Chrome 拡張を実際にロードし、YouTube 音声タブから real-transcriber 経由の文字起こしを検証。
+
+### 結果: PASS
+
+| 項目 | 結果 |
+|---|---|
+| 拡張ビルド → Chrome ロード | PASS |
+| tabCapture → MediaRecorder → WebSocket | PASS |
+| WebM チャンク連結 (Buffer.concat) | PASS |
+| ffmpeg webm→WAV 変換 | PASS |
+| faster-whisper small/CPU/int8 文字起こし | PASS |
+| **transcript.segment → sidepanel 表示** | **PASS** |
+| タイムスタンプ・信頼度表示 | PASS |
+| chrome.storage.local 自動保存 | PASS |
+| Export Markdown / JSON | PASS |
+
+### 発見された不良と修正
+
+| 不良 | 修正 |
+|---|---|
+| WebM チャンクの個別処理で ffmpeg エラー (EBML ヘッダー欠落) | `processBatch` で全チャンクを蓄積し `session.stop` 時一括処理 |
+| `processBatch` のレースコンディション | 排他ロック (`session.processing`) + バッファのスナップショット |
+| Stop 後に transcript が sidepanel に届かない | offscreen `stopCapture()` で transcript 受信を待機 (20s timeout) / service worker で offscreen close を 15s 遅延 |
+| ポップアップ再表示で Chunks カウンタがリセット | sidepanel の `capture.state` ハンドラを同一セッションではリセットしないよう修正 |
+| Stop 後にポップアップが「Recording…」のまま | `broadcastState("idle")` を待機前に移動 |
+
+### Known Issue (v0.1.2 送り)
+
+- サイドパネル未表示時に Start を押すとポップアップが閉じる (Chrome `sidePanel.open()` の標準動作)
+- `tabCapture` によりタブ音声がミュートされる (Chrome の制限事項)

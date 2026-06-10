@@ -127,10 +127,21 @@ async function runE2E(): Promise<void> {
   console.log(`  → chunk #0 (${audioData.length} bytes — complete file)`);
   record("Send audio chunk", true, `${audioData.length} bytes`);
 
-  // --- 4. Wait for transcription ---
-  console.log("\n4. Segment verification");
-  // faster-whisper CPU inference takes a few seconds for ~2.25s of audio
-  await sleep(10000);
+  // --- 4. Send session.stop (triggers batch processing) ---
+  // The server accumulates all chunks and transcribes them at session.stop.
+  console.log("\n4. Session stop");
+  ws.send(JSON.stringify({
+    type: "transcription.session.stop",
+    sessionId: SESSION_ID,
+    reason: "user_stop",
+  }));
+  record("Send session.stop", true, "reason: user_stop");
+
+  // --- 5. Wait for transcription result ---
+  console.log("\n5. Segment verification");
+  // CPU inference takes a few seconds for ~2.25s of audio;
+  // session.stop triggers batch processing of all accumulated chunks.
+  await sleep(15000);
 
   if (errorCount > 0) {
     record("No transcriber errors", false, `${errorCount} errors`);
@@ -157,17 +168,6 @@ async function runE2E(): Promise<void> {
   } else {
     record("Receive transcript segments", false, "0 segments received");
   }
-
-  // --- 5. Send session.stop ---
-  console.log("\n5. Session stop");
-  ws.send(JSON.stringify({
-    type: "transcription.session.stop",
-    sessionId: SESSION_ID,
-    reason: "user_stop",
-  }));
-  record("Send session.stop", true, "reason: user_stop");
-
-  await sleep(200);
 
   // --- 6. Close ---
   if (ws) {

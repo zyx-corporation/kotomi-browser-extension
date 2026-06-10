@@ -6,24 +6,39 @@ Chrome extension for capturing browser tab audio and transcribing it through Kot
 
 ## Status
 
-**v0.1.0 — Local Transcription MVP**
+**v0.1.1 — Real ASR Validation**
 
-> capture → transcribe → export → local persistence の最小系が成立。
-> 47 automated tests, 0 failures.
+> capture → transcribe (mock | faster-whisper) → export → local persistence が成立。
+> 49 automated tests, 0 failures.
 
 ## Quick Start
 
+### Mock backend (no Python/ASR dependencies)
+
 ```bash
-# 1. Start the mock transcriber (no Python/ASR dependencies)
 cd tools/mock-transcriber && npm install && npm start
+npm run build:extension
+# → Load apps/extension/dist/ in chrome://extensions
+# → Open a tab with audio, click Kotomi icon, Start
+```
 
-# 2. Load the extension in Chrome
-# chrome://extensions → Developer mode → Load unpacked → apps/extension/
+### Real ASR backend (Python 3.12 + faster-whisper)
 
-# 3. Open a tab with audio, click Kotomi icon, Start
-# Transcript appears in the Side Panel
+```bash
+# Terminal 1: Python ASR service
+cd tools/real-transcriber/python
+/usr/local/opt/python@3.12/bin/python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python asr_service.py
 
-# 4. Export as Markdown or JSON
+# Terminal 2: Node WebSocket server
+cd tools/real-transcriber && npm install
+TRANSCRIBER_BACKEND=faster-whisper npm start
+
+# Terminal 3: Build and load extension
+npm run build:extension
+# → Load apps/extension/dist/ in chrome://extensions
 ```
 
 ## Development
@@ -59,8 +74,11 @@ Browser Tab Audio
 | [docs/privacy-design.md](docs/privacy-design.md) | Privacy principles and data flow |
 | [docs/permissions.md](docs/permissions.md) | Permission rationale |
 | [docs/release-notes-v0.1.0.md](docs/release-notes-v0.1.0.md) | v0.1.0 release notes |
+| [docs/release-notes-v0.1.1.md](docs/release-notes-v0.1.1.md) | v0.1.1 release notes |
 | [docs/known-limitations-v0.1.0.md](docs/known-limitations-v0.1.0.md) | Known limitations |
 | [docs/smoke-v0.1.0.md](docs/smoke-v0.1.0.md) | RC smoke verification |
+| [docs/smoke-v0.1.1-real-asr.md](docs/smoke-v0.1.1-real-asr.md) | v0.1.1 Real ASR smoke |
+| [docs/post-v0.1.0-plan.md](docs/post-v0.1.0-plan.md) | Post-v0.1.0 roadmap |
 
 ## Goals
 
