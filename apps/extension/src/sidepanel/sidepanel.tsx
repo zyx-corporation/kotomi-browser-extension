@@ -256,17 +256,20 @@ chrome.runtime.onMessage.addListener((message) => {
 
     // New capture starting — flush existing session if needed
     if (state.status === "capturing" && state.sessionId) {
-      if (sessionId && sessionId !== state.sessionId && segments.length > 0) {
-        if (savePending && saveDebounceTimer) {
-          clearTimeout(saveDebounceTimer);
-          saveToStorage();
+      const isNewSession = sessionId !== state.sessionId;
+      if (isNewSession) {
+        if (sessionId && segments.length > 0) {
+          if (savePending && saveDebounceTimer) {
+            clearTimeout(saveDebounceTimer);
+            saveToStorage();
+          }
         }
+        sessionId = state.sessionId;
+        captureStartTime = Date.now();
+        sessionCreatedAt = Date.now();
+        chunkCount = 0;
+        chunkCountEl.textContent = "Chunks: 0";
       }
-      sessionId = state.sessionId;
-      if (captureStartTime === 0) captureStartTime = Date.now();
-      if (sessionCreatedAt === 0) sessionCreatedAt = Date.now();
-      chunkCount = 0;
-      chunkCountEl.textContent = "Chunks: 0";
     }
 
     // Capture stopped — flush pending save

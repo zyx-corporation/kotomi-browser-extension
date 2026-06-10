@@ -36,7 +36,6 @@ startBtn.addEventListener("click", async () => {
   } catch (err) {
     console.warn("[popup] failed to open side panel:", err);
   }
-  window.close(); // Close popup after starting
 });
 
 stopBtn.addEventListener("click", () => {
