@@ -89,4 +89,19 @@ npx tsx tests/real-transcriber-smoke.test.ts
 ## Dependencies
 
 - **mock backend**: nothing beyond Node.js
-- **faster-whisper backend**: Python 3.10+, faster-whisper, ffmpeg
+- **faster-whisper backend**: Python 3.10〜3.12 (3.13+ 不可), faster-whisper, ffmpeg
+
+> Python バージョン制約の詳細は [python/README.md](python/README.md) を参照。
+
+## Testing (Real ASR)
+
+```bash
+# E2E テストの実行 (Python ASR + Node サーバーが起動済みであること)
+npx tsx tests/real-asr-e2e.test.ts
+```
+
+テスト用音声ファイルの準備:
+```bash
+say -o /tmp/test.aiff "こんにちは、これはテストです。"
+ffmpeg -y -i /tmp/test.aiff -c:a libopus -b:a 64k -ar 48000 -ac 1 /tmp/kotomi-test-speech.webm
+```

@@ -25,8 +25,18 @@ function setUIState(status: "idle" | "capturing" | "error"): void {
   }
 }
 
-startBtn.addEventListener("click", () => {
+startBtn.addEventListener("click", async () => {
   chrome.runtime.sendMessage({ type: "capture.start" });
+  // Open side panel so user can see transcript immediately
+  try {
+    const currentWindow = await chrome.windows.getCurrent();
+    if (currentWindow.id != null) {
+      await chrome.sidePanel.open({ windowId: currentWindow.id });
+    }
+  } catch (err) {
+    console.warn("[popup] failed to open side panel:", err);
+  }
+  window.close(); // Close popup after starting
 });
 
 stopBtn.addEventListener("click", () => {

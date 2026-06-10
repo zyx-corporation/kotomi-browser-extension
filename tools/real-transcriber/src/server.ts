@@ -23,6 +23,7 @@ interface Session {
   chunkBuffers: Buffer[];
   chunkTimestamps: number[];
   chunkStartMs: number;   // timestamp of first chunk in current batch
+  processing: boolean;    // prevent concurrent processBatch calls
 }
 
 const sessions = new Map<string, Session>();
@@ -63,14 +64,25 @@ async function loadAdapter(): Promise<ASRAdapter> {
 }
 
 async function processBatch(session: Session, adapter: ASRAdapter): Promise<void> {
+  console.log(`[real-transcriber] processBatch: ${session.chunkBuffers.length} chunks queued`);
   if (session.chunkBuffers.length === 0) return;
-
-  // Concatenate all chunks in the batch
-  const combined = Buffer.concat(session.chunkBuffers);
-  const startMs = session.chunkStartMs;
-  const endMs = session.chunkTimestamps[session.chunkTimestamps.length - 1] ?? Date.now();
+  if (session.processing) {
+    console.log(`[real-transcriber] processBatch: skipping — already processing`);
+    return;
+  }
+  session.processing = true;
 
   try {
+    // Snapshot and clear the buffer before async work so new chunks can accumulate
+    const chunks = session.chunkBuffers.splice(0);
+    const timestamps = session.chunkTimestamps.splice(0);
+    const startMs = session.chunkStartMs;
+
+    // Concatenate all chunks in the batch
+    const combined = Buffer.concat(chunks);
+    const endMs = timestamps[timestamps.length - 1] ?? Date.now();
+
+    console.log(`[real-transcriber] processBatch: combined=${combined.length} bytes, calling adapter.transcribe`);
     const result = await adapter.transcribe(combined, "audio/webm;codecs=opus");
     const segment = createSegment(session.sessionId, result.text, startMs, endMs, result.confidence);
     sendJSON(session.ws, segment);
@@ -82,11 +94,9 @@ async function processBatch(session: Session, adapter: ASRAdapter): Promise<void
       sessionId: session.sessionId,
       message: `ASR transcription failed: ${err}`,
     });
+  } finally {
+    session.processing = false;
   }
-
-  // Reset batch
-  session.chunkBuffers = [];
-  session.chunkTimestamps = [];
 }
 
 async function main(): Promise<void> {
@@ -120,7 +130,7 @@ async function main(): Promise<void> {
 
     let currentSession: Session | null = null;
 
-    ws.on("message", (data: Buffer) => {
+    ws.on("message", async (data: Buffer) => {
       // Try JSON first
       try {
         const msg = JSON.parse(data.toString());
@@ -134,6 +144,7 @@ async function main(): Promise<void> {
               chunkBuffers: [],
               chunkTimestamps: [],
               chunkStartMs: 0,
+              processing: false,
             };
             sessions.set(msg.sessionId, currentSession);
 
@@ -164,9 +175,9 @@ async function main(): Promise<void> {
             console.log(
               `[real-transcriber] session.stop: ${msg.sessionId} reason=${msg.reason}`,
             );
-            // Process any remaining chunks
+            // Process all accumulated chunks as a single batch
             if (currentSession && currentSession.chunkBuffers.length > 0) {
-              processBatch(currentSession, adapter);
+              await processBatch(currentSession, adapter);
             }
             sessions.delete(msg.sessionId);
             break;
@@ -181,13 +192,13 @@ async function main(): Promise<void> {
         if (currentSession) {
           currentSession.chunkBuffers.push(Buffer.from(data));
           console.log(
-            `[real-transcriber] binary frame: ${data.byteLength} bytes (buffered: ${currentSession.chunkBuffers.length}/${CHUNKS_PER_SEGMENT} chunks)`,
+            `[real-transcriber] binary frame: ${data.byteLength} bytes (buffered: ${currentSession.chunkBuffers.length} chunks)`,
           );
 
-          // Check if we've accumulated enough chunks for a batch
-          if (currentSession.chunkBuffers.length >= CHUNKS_PER_SEGMENT) {
-            processBatch(currentSession, adapter);
-          }
+          // Chunks are accumulated and processed at session.stop.
+          // Individual MediaRecorder WebM chunks (except the first) lack
+          // EBML headers and cannot be decoded independently.
+          // Concatenating all chunks from the start yields valid WebM.
         }
       }
     });

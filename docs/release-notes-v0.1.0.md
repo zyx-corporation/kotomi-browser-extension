@@ -84,7 +84,7 @@ See [docs/known-limitations-v0.1.0.md](./known-limitations-v0.1.0.md) for full d
 | Automated Tests | **47/47 passed** (typecheck + 4 suites) |
 | MVP Criteria | **7/7 passed** |
 | Failure Path | **8/8 passed** |
-| Real ASR E2E | **BLOCKED** (Python/faster-whisper environment not set up) |
+| Real ASR E2E | **UNBLOCKED** (2026-06-11) — see [smoke-v0.1.1-real-asr.md](./smoke-v0.1.1-real-asr.md) |
 | Documentation Wording | **PASS** (no production-ready / accurate claims) |
 
 See [docs/smoke-v0.1.0.md](./smoke-v0.1.0.md) for detailed RC smoke results.

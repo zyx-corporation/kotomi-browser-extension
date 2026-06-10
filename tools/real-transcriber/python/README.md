@@ -4,15 +4,22 @@ Local HTTP service wrapping faster-whisper for speech recognition.
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.10〜3.12 (**3.13+ は不可**: onnxruntime のホイールが未提供)
 - ffmpeg (for audio conversion)
 - CUDA-compatible GPU recommended, CPU also works
+
+> macOS で Python 3.12 を導入する場合:
+> ```bash
+> brew install python@3.12
+> ```
 
 ## Installation
 
 ```bash
 cd tools/real-transcriber/python
-python -m venv .venv
+
+# Python 3.12 を明示的に指定して venv を作成
+/usr/local/opt/python@3.12/bin/python3.12 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
