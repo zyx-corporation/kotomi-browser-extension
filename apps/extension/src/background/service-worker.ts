@@ -113,13 +113,13 @@ async function stopCapture(): Promise<void> {
 
   currentSessionId = null;
   transcriberStatus = "disconnected";
+  broadcastState("idle");
 
   // Wait for offscreen to receive and relay the final transcript
   // before closing it. The server needs time to transcribe accumulated audio.
   await new Promise((resolve) => setTimeout(resolve, 15000));
 
   await closeOffscreenDocument();
-  broadcastState("idle");
 }
 
 function broadcastState(
